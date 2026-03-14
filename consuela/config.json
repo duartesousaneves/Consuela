@@ -24,6 +24,5 @@
   },
   "map": [
     "ssl"
-  ],
-  "image": "ghcr.io/duartesousaneves/consuela-addon/{arch}"
+  ]
 }
