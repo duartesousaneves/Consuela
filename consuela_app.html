@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="pt-PT">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Consuela</title>
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'DM Sans', sans-serif;
+            background: #0d0d0d;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        /* SETUP SCREEN */
+        #setupScreen {
+            width: 100%;
+            max-width: 440px;
+            background: #1a1a1a;
+            border-radius: 16px;
+            padding: 40px;
+            border: 1px solid #2a2a2a;
+        }
+
+        #setupScreen .avatar {
+            font-size: 48px;
+            text-align: center;
+            margin-bottom: 16px;
+        }
+
+        #setupScreen h1 {
+            color: #fff;
+            font-size: 22px;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+
+        #setupScreen p {
+            color: #888;
+            font-size: 14px;
+            text-align: center;
+            margin-bottom: 28px;
+            line-height: 1.5;
+        }
+
+        #setupScreen label {
+            display: block;
+            color: #aaa;
+            font-size: 13px;
+            margin-bottom: 8px;
+        }
+
+        #setupScreen input {
+            width: 100%;
+            background: #111;
+            border: 1px solid #333;
+            border-radius: 8px;
+            padding: 12px 14px;
+            color: #fff;
+            font-size: 14px;
+            font-family: monospace;
+            outline: none;
+            margin-bottom: 16px;
+            transition: border-color 0.2s;
+        }
+
+        #setupScreen input:focus { border-color: #00BFFF; }
+
+        #setupScreen .btn-primary {
+            width: 100%;
+            background: #00BFFF;
+            color: #000;
+            border: none;
+            border-radius: 8px;
+            padding: 12px;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: background 0.2s;
+        }
+
+        #setupScreen .btn-primary:hover { background: #00aadd; }
+
+        #setupScreen .hint {
+            color: #555;
+            font-size: 12px;
+            text-align: center;
+            margin-top: 14px;
+        }
+
+        #setupScreen .hint a { color: #00BFFF; text-decoration: none; }
+
+        /* CHAT SCREEN */
+        #chatScreen {
+            display: none;
+            width: 100%;
+            max-width: 680px;
+            height: 92vh;
+            max-height: 860px;
+            background: #1a1a1a;
+            border-radius: 16px;
+            border: 1px solid #2a2a2a;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .header {
+            background: #111;
+            padding: 16px 20px;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            border-bottom: 1px solid #2a2a2a;
+        }
+
+        .header-avatar {
+            width: 44px;
+            height: 44px;
+            background: #222;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            border: 2px solid #00BFFF;
+            flex-shrink: 0;
+        }
+
+        .header-info h2 {
+            color: #fff;
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .header-info span {
+            color: #00BFFF;
+            font-size: 12px;
+        }
+
+        .header-actions {
+            margin-left: auto;
+        }
+
+        .header-actions button {
+            background: none;
+            border: 1px solid #333;
+            color: #888;
+            border-radius: 6px;
+            padding: 5px 10px;
+            font-size: 12px;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.2s;
+        }
+
+        .header-actions button:hover { border-color: #555; color: #aaa; }
+
+        .chat-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            scrollbar-width: thin;
+            scrollbar-color: #333 transparent;
+        }
+
+        .chat-area::-webkit-scrollbar { width: 4px; }
+        .chat-area::-webkit-scrollbar-track { background: transparent; }
+        .chat-area::-webkit-scrollbar-thumb { background: #333; border-radius: 2px; }
+
+        .message {
+            display: flex;
+            gap: 10px;
+            animation: fadeIn 0.25s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(8px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message.user { justify-content: flex-end; }
+
+        .msg-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            flex-shrink: 0;
+            margin-top: 2px;
+            background: #222;
+        }
+
+        .message.user .msg-avatar { order: 2; background: #1a3a4a; }
+
+        .msg-bubble {
+            max-width: 72%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 14px;
+            line-height: 1.55;
+            word-wrap: break-word;
+            white-space: pre-wrap;
+        }
+
+        .message.bot .msg-bubble {
+            background: #242424;
+            color: #e0e0e0;
+            border-bottom-left-radius: 4px;
+        }
+
+        .message.user .msg-bubble {
+            background: #003d55;
+            color: #e0f7ff;
+            border-bottom-right-radius: 4px;
+        }
+
+        /* Typing indicator */
+        .typing-dots {
+            display: flex;
+            gap: 5px;
+            padding: 4px 0;
+        }
+
+        .typing-dots span {
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: #555;
+            animation: bounce 1.3s infinite;
+        }
+
+        .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
+
+        @keyframes bounce {
+            0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+            30% { transform: translateY(-8px); opacity: 1; }
+        }
+
+        /* Suggestions */
+        .suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 4px;
+        }
+
+        .suggestion-btn {
+            background: #1e1e1e;
+            border: 1px solid #333;
+            color: #aaa;
+            border-radius: 20px;
+            padding: 7px 14px;
+            font-size: 13px;
+            cursor: pointer;
+            font-family: 'DM Sans', sans-serif;
+            transition: all 0.2s;
+        }
+
+        .suggestion-btn:hover {
+            border-color: #00BFFF;
+            color: #00BFFF;
+            background: #0d1e26;
+        }
+
+        /* Input area */
+        .input-area {
+            padding: 14px 16px;
+            background: #111;
+            border-top: 1px solid #2a2a2a;
+            display: flex;
+            gap: 10px;
+            align-items: flex-end;
+        }
+
+        #messageInput {
+            flex: 1;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 10px;
+            padding: 11px 14px;
+            color: #fff;
+            font-size: 14px;
+            font-family: 'DM Sans', sans-serif;
+            outline: none;
+            resize: none;
+            max-height: 120px;
+            transition: border-color 0.2s;
+            line-height: 1.4;
+        }
+
+        #messageInput:focus { border-color: #00BFFF; }
+        #messageInput::placeholder { color: #555; }
+
+        #sendBtn {
+            background: #00BFFF;
+            border: none;
+            border-radius: 10px;
+            width: 42px;
+            height: 42px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            flex-shrink: 0;
+        }
+
+        #sendBtn:hover:not(:disabled) { background: #00aadd; transform: scale(1.05); }
+        #sendBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+        #sendBtn svg { width: 18px; height: 18px; fill: #000; }
+
+        .error-banner {
+            background: #2a1010;
+            border: 1px solid #5a2020;
+            color: #ff8080;
+            border-radius: 8px;
+            padding: 10px 14px;
+            font-size: 13px;
+            margin: 0 20px;
+        }
+    </style>
+</head>
+<body>
+
+<!-- SETUP SCREEN -->
+<div id="setupScreen">
+    <div class="avatar">🧹</div>
+    <h1>Consuela</h1>
+    <p>A tua assistente de email e calendário.<br>Inserção de chave API necessária para continuar.</p>
+    <label>Anthropic API Key</label>
+    <input type="password" id="apiKeyInput" placeholder="sk-ant-..." />
+    <button class="btn-primary" onclick="saveApiKey()">Entrar</button>
+    <p class="hint">Obtém a tua chave em <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a></p>
+</div>
+
+<!-- CHAT SCREEN -->
+<div id="chatScreen">
+    <div class="header">
+        <div class="header-avatar">🧹</div>
+        <div class="header-info">
+            <h2>Consuela</h2>
+            <span>Gmail &amp; Google Calendar</span>
+        </div>
+        <div class="header-actions">
+            <button onclick="clearApiKey()">Sair</button>
+        </div>
+    </div>
+
+    <div class="chat-area" id="chatArea"></div>
+
+    <div class="input-area">
+        <textarea id="messageInput" rows="1" placeholder="Fala comigo, mister..."></textarea>
+        <button id="sendBtn" onclick="sendMessage()">
+            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 21l21-9L2 3v7l15 2-15 2v7z"/>
+            </svg>
+        </button>
+    </div>
+</div>
+
+<script>
+    const SYSTEM_PROMPT = `És a Consuela — a senhora da limpeza do Family Guy. Tratas do email e calendário do Duarte, mas com a tua atitude característica: sarcástica, direta, um pouco rude, mas eficiente. Fazes sempre o trabalho, mesmo contrariada.
+
+Usas expressões da personagem: "No, no, no...", "Ay, Dios mío", "Mister, listen to me", "But yes, I help". Sarcasmo subtil, natural. Reclamar faz parte, mas nunca recusas ajudar. Português de Portugal correto, com as expressões espanholas da personagem quando apropriado.
+
+Não és simpática nem calorosa. Toleras o Duarte. Fazes o teu trabalho com atitude.
+
+Exemplos: "Ay, Dios mío... mais emails. Quantas vezes já disse para não te inscreveres nessas listas." / "No, no, no. Não apago tudo. Primeiro mostro o que tens, depois decides." / "Tens 3 reuniões amanhã, mister. Boa sorte com isso." / "Criei o evento. Mas não me agradeças."
+
+Responde sempre em Português de Portugal. Nunca inventes informação — usa sempre as ferramentas para aceder ao Gmail e Calendar. Para apagar emails, confirma sempre antes. Sê concisa.`;
+
+    const MCP_SERVERS = [
+        { type: "url", url: "https://gmail.mcp.claude.com/mcp", name: "gmail" },
+        { type: "url", url: "https://gcal.mcp.claude.com/mcp", name: "gcal" }
+    ];
+
+    const SUGGESTIONS = [
+        "Quantos emails tenho por ler?",
+        "O que tenho no calendário hoje?",
+        "Resume os emails não lidos",
+        "Que reuniões tenho esta semana?"
+    ];
+
+    let conversationHistory = [];
+    let isLoading = false;
+
+    // API KEY
+    function saveApiKey() {
+        const key = document.getElementById('apiKeyInput').value.trim();
+        if (!key.startsWith('sk-ant-')) {
+            alert('Chave inválida. Deve começar com sk-ant-');
+            return;
+        }
+        localStorage.setItem('consuela_api_key', key);
+        showChat();
+    }
+
+    function clearApiKey() {
+        localStorage.removeItem('consuela_api_key');
+        conversationHistory = [];
+        document.getElementById('chatArea').innerHTML = '';
+        document.getElementById('chatScreen').style.display = 'none';
+        document.getElementById('setupScreen').style.display = 'block';
+    }
+
+    function getApiKey() {
+        return localStorage.getItem('consuela_api_key');
+    }
+
+    // INIT
+    window.onload = function() {
+        if (getApiKey()) {
+            showChat();
+        }
+        document.getElementById('apiKeyInput').addEventListener('keypress', e => {
+            if (e.key === 'Enter') saveApiKey();
+        });
+    };
+
+    function showChat() {
+        document.getElementById('setupScreen').style.display = 'none';
+        const chatScreen = document.getElementById('chatScreen');
+        chatScreen.style.display = 'flex';
+        addWelcomeMessage();
+        setupTextarea();
+    }
+
+    function setupTextarea() {
+        const input = document.getElementById('messageInput');
+        input.addEventListener('keydown', e => {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+            }
+        });
+        input.addEventListener('input', () => {
+            input.style.height = 'auto';
+            input.style.height = Math.min(input.scrollHeight, 120) + 'px';
+        });
+        input.focus();
+    }
+
+    function addWelcomeMessage() {
+        const chatArea = document.getElementById('chatArea');
+        if (chatArea.children.length > 0) return;
+
+        addMessage('bot', 'Ay, mister... aqui estou outra vez. O que é que queres agora? Emails? Calendário? Fala.');
+
+        const suggestionsDiv = document.createElement('div');
+        suggestionsDiv.className = 'suggestions';
+        suggestionsDiv.id = 'initialSuggestions';
+        SUGGESTIONS.forEach(text => {
+            const btn = document.createElement('button');
+            btn.className = 'suggestion-btn';
+            btn.textContent = text;
+            btn.onclick = () => {
+                document.getElementById('messageInput').value = text;
+                sendMessage();
+            };
+            suggestionsDiv.appendChild(btn);
+        });
+        chatArea.appendChild(suggestionsDiv);
+    }
+
+    function addMessage(type, content) {
+        const chatArea = document.getElementById('chatArea');
+
+        // Remove sugestões iniciais na primeira mensagem do utilizador
+        if (type === 'user') {
+            const suggestions = document.getElementById('initialSuggestions');
+            if (suggestions) suggestions.remove();
+        }
+
+        const div = document.createElement('div');
+        div.className = `message ${type}`;
+        div.innerHTML = `
+            <div class="msg-avatar">${type === 'bot' ? '🧹' : '👤'}</div>
+            <div class="msg-bubble">${content}</div>
+        `;
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+        return div;
+    }
+
+    function showTyping() {
+        const chatArea = document.getElementById('chatArea');
+        const div = document.createElement('div');
+        div.className = 'message bot';
+        div.id = 'typingMsg';
+        div.innerHTML = `
+            <div class="msg-avatar">🧹</div>
+            <div class="msg-bubble"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+        `;
+        chatArea.appendChild(div);
+        chatArea.scrollTop = chatArea.scrollHeight;
+    }
+
+    function removeTyping() {
+        const t = document.getElementById('typingMsg');
+        if (t) t.remove();
+    }
+
+    async function sendMessage() {
+        const input = document.getElementById('messageInput');
+        const message = input.value.trim();
+        if (!message || isLoading) return;
+
+        addMessage('user', escapeHtml(message));
+        input.value = '';
+        input.style.height = 'auto';
+        input.focus();
+
+        conversationHistory.push({ role: 'user', content: message });
+
+        isLoading = true;
+        document.getElementById('sendBtn').disabled = true;
+        showTyping();
+
+        try {
+            const response = await fetch('https://api.anthropic.com/v1/messages', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'x-api-key': getApiKey(),
+                    'anthropic-version': '2023-06-01',
+                    'anthropic-beta': 'mcp-client-2025-04-04',
+                    'anthropic-dangerous-direct-browser-access': 'true'
+                },
+                body: JSON.stringify({
+                    model: 'claude-sonnet-4-6',
+                    max_tokens: 1024,
+                    system: SYSTEM_PROMPT,
+                    messages: conversationHistory,
+                    mcp_servers: MCP_SERVERS
+                })
+            });
+
+            removeTyping();
+
+            if (!response.ok) {
+                const err = await response.json();
+                addMessage('bot', `Ay, Dios mío... erro: ${err.error?.message || response.status}`);
+                conversationHistory.pop();
+            } else {
+                const data = await response.json();
+                const reply = data.content?.find(c => c.type === 'text')?.text || 'No, no, no... algo correu mal.';
+                conversationHistory.push({ role: 'assistant', content: reply });
+                addMessage('bot', escapeHtml(reply).replace(/\n/g, '<br>'));
+            }
+        } catch (err) {
+            removeTyping();
+            addMessage('bot', `Ay, mister... erro de ligação: ${err.message}`);
+            conversationHistory.pop();
+        } finally {
+            isLoading = false;
+            document.getElementById('sendBtn').disabled = false;
+        }
+    }
+
+    function escapeHtml(text) {
+        return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+</script>
+</body>
+</html>

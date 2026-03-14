@@ -1,0 +1,29 @@
+{
+  "name": "Consuela",
+  "version": "1.0.0",
+  "slug": "consuela",
+  "description": "Assistente pessoal para Gmail e Google Calendar",
+  "url": "https://github.com/duartesousaneves/consuela",
+  "arch": ["armv7", "aarch64", "amd64"],
+  "startup": "application",
+  "boot": "auto",
+  "ports": {
+    "5000/tcp": 5000
+  },
+  "ports_description": {
+    "5000/tcp": "Interface web da Consuela"
+  },
+  "options": {
+    "anthropic_api_key": ""
+  },
+  "schema": {
+    "anthropic_api_key": "str"
+  },
+  "environment": {
+    "ANTHROPIC_API_KEY": "{{options.anthropic_api_key}}"
+  },
+  "map": [
+    "ssl"
+  ],
+  "image": "ghcr.io/duartesousaneves/consuela-addon/{arch}"
+}
