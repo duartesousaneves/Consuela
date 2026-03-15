@@ -1,7 +1,5 @@
 #!/usr/bin/with-contenv bashio
 
-bashio::log.info "A iniciar Consuela..."
-
 if [ -f /data/.env ]; then
     set -a
     . /data/.env
