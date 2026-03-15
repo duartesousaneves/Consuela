@@ -7,3 +7,4 @@ __pycache__/
 venv/
 .env
 auth/
+token_b64.txt
