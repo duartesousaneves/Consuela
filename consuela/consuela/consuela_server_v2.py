@@ -24,7 +24,7 @@ import base64
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
 # Em HAOS, /data/ é persistente entre reinícios do add-on
-DATA_DIR = os.environ.get('DATA_DIR', '/data')
+DATA_DIR = os.environ.get('DATA_DIR', '/homeassistant/consuela')
 TOKEN_FILE = os.path.join(DATA_DIR, 'token.pickle')
 CREDENTIALS_FILE = os.path.join(DATA_DIR, 'credentials.json')
 
