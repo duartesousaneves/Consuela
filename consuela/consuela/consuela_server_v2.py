@@ -12,7 +12,7 @@ import pickle
 import threading
 import schedule
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from flask import Flask, send_file, request, jsonify
 from flask_cors import CORS
 from google.auth.transport.requests import Request
@@ -23,12 +23,10 @@ import anthropic
 import base64
 
 # ─── Paths ────────────────────────────────────────────────────────────────────
-# Em HAOS, /data/ é persistente entre reinícios do add-on
 DATA_DIR = os.environ.get('DATA_DIR', '/homeassistant/consuela')
 TOKEN_FILE = os.path.join(DATA_DIR, 'token.pickle')
 CREDENTIALS_FILE = os.path.join(DATA_DIR, 'credentials.json')
 
-# Fallback para desenvolvimento local
 if not os.path.exists(DATA_DIR):
     DATA_DIR = '.'
     TOKEN_FILE = 'token.pickle'
@@ -72,7 +70,6 @@ class ConsuaBackendV2:
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
                 creds.refresh(Request())
-                # Guarda token renovado
                 with open(TOKEN_FILE, 'wb') as token:
                     pickle.dump(creds, token)
             else:
@@ -102,6 +99,7 @@ class ConsuaBackendV2:
             headers = msg['payload']['headers']
             email_data = {
                 'id': message['id'],
+                'threadId': msg.get('threadId', message['id']),
                 'from': next((h['value'] for h in headers if h['name'] == 'From'), 'Desconhecido'),
                 'subject': next((h['value'] for h in headers if h['name'] == 'Subject'), '(sem assunto)'),
                 'date': next((h['value'] for h in headers if h['name'] == 'Date'), ''),
@@ -142,6 +140,74 @@ class ConsuaBackendV2:
                 pass
         return count
 
+    def _mark_as_read(self, email_ids):
+        count = 0
+        for email_id in email_ids:
+            try:
+                self.gmail_service.users().messages().modify(
+                    userId='me', id=email_id,
+                    body={'removeLabelIds': ['UNREAD']}
+                ).execute()
+                count += 1
+            except Exception:
+                pass
+        return count
+
+    def _delete_emails(self, email_ids):
+        count = 0
+        for email_id in email_ids:
+            try:
+                self.gmail_service.users().messages().modify(
+                    userId='me', id=email_id,
+                    body={'addLabelIds': ['TRASH'], 'removeLabelIds': ['INBOX']}
+                ).execute()
+                count += 1
+            except Exception:
+                pass
+        return count
+
+    def _filter_by_sender(self, sender):
+        results = self.gmail_service.users().messages().list(
+            userId='me', maxResults=20, q=f'from:{sender}'
+        ).execute()
+        messages = results.get('messages', [])
+        emails = []
+        for message in messages:
+            try:
+                msg = self.gmail_service.users().messages().get(
+                    userId='me', id=message['id'], format='full'
+                ).execute()
+                headers = msg['payload']['headers']
+                emails.append({
+                    'id': message['id'],
+                    'threadId': msg.get('threadId', message['id']),
+                    'from': next((h['value'] for h in headers if h['name'] == 'From'), 'Desconhecido'),
+                    'subject': next((h['value'] for h in headers if h['name'] == 'Subject'), '(sem assunto)'),
+                    'date': next((h['value'] for h in headers if h['name'] == 'Date'), ''),
+                    'body': self._get_email_body(msg)
+                })
+            except Exception:
+                pass
+        return emails
+
+    def _get_email_thread(self, thread_id):
+        try:
+            thread = self.gmail_service.users().threads().get(
+                userId='me', id=thread_id, format='full'
+            ).execute()
+            messages = []
+            for msg in thread.get('messages', []):
+                headers = msg['payload']['headers']
+                messages.append({
+                    'id': msg['id'],
+                    'from': next((h['value'] for h in headers if h['name'] == 'From'), 'Desconhecido'),
+                    'date': next((h['value'] for h in headers if h['name'] == 'Date'), ''),
+                    'body': self._get_email_body(msg)
+                })
+            return messages
+        except Exception as e:
+            return []
+
     def _add_label(self, email_ids, label_name):
         try:
             results = self.gmail_service.users().labels().list(userId='me').execute()
@@ -164,7 +230,7 @@ class ConsuaBackendV2:
                 ).execute()
                 count += 1
             return count
-        except Exception as e:
+        except Exception:
             return 0
 
     def _create_event(self, title, description="", date_str="", start_time="19:00", end_time="21:00"):
@@ -201,7 +267,6 @@ class ConsuaBackendV2:
         return result.get('items', [])
 
     def _send_email(self, subject, body_html):
-        """Envia email via Gmail API"""
         try:
             import email.mime.text
             import email.mime.multipart
@@ -223,8 +288,61 @@ class ConsuaBackendV2:
             print(f"Erro ao enviar email: {e}")
             return False
 
+    def get_summary(self):
+        """Dados para o painel de resumo: contagens + próximos 3 eventos"""
+        try:
+            _, unread_count = self._get_emails("is:unread", max_results=100)
+        except Exception:
+            unread_count = 0
+
+        try:
+            events = self._get_calendar_events(days=7)
+        except Exception:
+            events = []
+
+        today_str = date.today().isoformat()
+        tomorrow_str = (date.today() + timedelta(days=1)).isoformat()
+        now = datetime.now()
+
+        today_events = 0
+        tomorrow_events = 0
+        upcoming = []
+
+        for event in events:
+            start_raw = event['start'].get('dateTime', event['start'].get('date', ''))
+            is_datetime = 'T' in start_raw
+
+            try:
+                if is_datetime:
+                    # Remove timezone offset for simple local comparison
+                    clean = start_raw[:19]
+                    event_dt = datetime.fromisoformat(clean)
+                    event_date_str = clean[:10]
+                else:
+                    event_date_str = start_raw
+                    event_dt = datetime.strptime(start_raw, '%Y-%m-%d')
+
+                if event_date_str == today_str:
+                    today_events += 1
+                elif event_date_str == tomorrow_str:
+                    tomorrow_events += 1
+
+                if event_dt >= now and len(upcoming) < 3:
+                    upcoming.append({
+                        'time': event_dt.strftime('%H:%M') if is_datetime else 'dia todo',
+                        'title': event.get('summary', '(sem título)')
+                    })
+            except Exception:
+                pass
+
+        return {
+            'unread_count': unread_count,
+            'today_events': today_events,
+            'tomorrow_events': tomorrow_events,
+            'upcoming': upcoming
+        }
+
     def generate_daily_report(self):
-        """Gera o report diário e envia por email"""
         try:
             today = datetime.now().strftime("%d de %B de %Y")
             emails, total = self._get_emails("is:unread", max_results=50, use_cache=False)
@@ -278,7 +396,6 @@ Termina com um comentário característico da Consuela sobre o estado do email."
             )
 
             report_html = response.content[0].text
-
             subject = f"🧹 Consuela — Report Diário {today}"
             self._send_email(subject, report_html)
             print(f"[{datetime.now()}] Report diário enviado.")
@@ -294,6 +411,7 @@ Termina com um comentário característico da Consuela sobre o estado do email."
             emails_context = json.dumps([
                 {
                     'id': e['id'],
+                    'threadId': e.get('threadId', e['id']),
                     'from': e['from'],
                     'subject': e['subject'],
                     'date': e['date'],
@@ -328,6 +446,64 @@ Termina com um comentário característico da Consuela sobre o estado do email."
                     }
                 },
                 {
+                    "name": "mark_as_read",
+                    "description": "Marca emails como lidos (remove label UNREAD)",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "email_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "IDs dos emails a marcar como lidos"
+                            }
+                        },
+                        "required": ["email_ids"]
+                    }
+                },
+                {
+                    "name": "delete_emails",
+                    "description": "Move emails para o lixo (Trash). Só usar após confirmação explícita do utilizador no mesmo turno.",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "email_ids": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                                "description": "IDs dos emails a apagar"
+                            }
+                        },
+                        "required": ["email_ids"]
+                    }
+                },
+                {
+                    "name": "filter_by_sender",
+                    "description": "Pesquisa todos os emails de um remetente específico (não filtra cache, vai à API)",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "sender": {
+                                "type": "string",
+                                "description": "Email ou nome do remetente"
+                            }
+                        },
+                        "required": ["sender"]
+                    }
+                },
+                {
+                    "name": "get_email_thread",
+                    "description": "Retorna todas as mensagens de uma thread (histórico completo da conversa)",
+                    "input_schema": {
+                        "type": "object",
+                        "properties": {
+                            "thread_id": {
+                                "type": "string",
+                                "description": "ID da thread"
+                            }
+                        },
+                        "required": ["thread_id"]
+                    }
+                },
+                {
                     "name": "create_event",
                     "description": "Cria evento no Google Calendar",
                     "input_schema": {
@@ -356,11 +532,13 @@ Termina com um comentário característico da Consuela sobre o estado do email."
                 }
             ]
 
-            system_prompt = """És a CONSUELA da série Family Guy.
-Estás em Portugal e falas português de Portugal.
-Características: dizes "No, no, no", "Ay, Dios mío", "Mister, listen to me".
-Sarcasmo subtil, prática e eficiente. Reclamar faz parte, mas nunca recusas ajudar.
-Nunca inventes informação — usa sempre as ferramentas disponíveis."""
+            system_prompt = """És a Consuela da série Family Guy. Falas português de Portugal.
+Ajudas o Duarte com o seu email e calendário.
+Personalidade: prática, direta, ligeiramente sarcástica. Nunca recusas ajudar.
+Ocasionalmente usas "No, no, no" ou "Ay, mister" quando faz sentido — não em todas as mensagens.
+Nunca inventes informação — usa sempre as ferramentas disponíveis.
+Quando executes uma ação, confirma o que fizeste de forma concisa.
+Para delete_emails: pede sempre confirmação explícita antes de usar o tool."""
 
             prompt = f"""CONTEXTO:
 - Emails não lidos: {total_unread}
@@ -385,6 +563,8 @@ Responde em português de Portugal com a personalidade da Consuela."""
             )
 
             response_text = ""
+            tool_result_emails = []
+
             for block in message.content:
                 if hasattr(block, 'text'):
                     response_text = block.text
@@ -392,6 +572,21 @@ Responde em português de Portugal com a personalidade da Consuela."""
                     if block.name == "archive_emails":
                         result = self._archive_emails(block.input.get('email_ids', []))
                         response_text += f"\n✅ Arquivados {result} email(s)."
+                    elif block.name == "mark_as_read":
+                        result = self._mark_as_read(block.input.get('email_ids', []))
+                        response_text += f"\n✅ Marcados como lidos {result} email(s)."
+                    elif block.name == "delete_emails":
+                        result = self._delete_emails(block.input.get('email_ids', []))
+                        response_text += f"\n🗑️ Movidos para o lixo {result} email(s)."
+                    elif block.name == "filter_by_sender":
+                        sender_emails = self._filter_by_sender(block.input.get('sender', ''))
+                        tool_result_emails = sender_emails
+                        response_text += f"\n📬 Encontrados {len(sender_emails)} email(s) de {block.input.get('sender', '')}."
+                    elif block.name == "get_email_thread":
+                        thread_msgs = self._get_email_thread(block.input.get('thread_id', ''))
+                        response_text += f"\n📧 Thread com {len(thread_msgs)} mensagem(ns)."
+                        for i, m in enumerate(thread_msgs, 1):
+                            response_text += f"\n\n**{i}. De:** {m['from']} | {m['date']}\n{m['body'][:300]}"
                     elif block.name == "create_event":
                         result = self._create_event(
                             block.input.get('title', ''),
@@ -408,15 +603,40 @@ Responde em português de Portugal com a personalidade da Consuela."""
                         )
                         response_text += f"\n✅ Label adicionado a {result} email(s)."
 
-            return response_text
+            # Emails para mostrar como cards no frontend
+            email_keywords = ['email', 'emails', 'inbox', 'mensagem', 'mensagens',
+                               'não lidos', 'remetente', 'arquivar', 'apagar', 'lidos', 'correio']
+            is_email_query = any(kw in user_input.lower() for kw in email_keywords)
+            used_email_tool = any(
+                block.type == 'tool_use' and block.name not in ['create_event']
+                for block in message.content
+            )
+
+            if tool_result_emails:
+                email_cards = tool_result_emails
+            elif is_email_query or used_email_tool:
+                email_cards = [
+                    {
+                        'id': e['id'],
+                        'threadId': e.get('threadId', e['id']),
+                        'from': e['from'],
+                        'subject': e['subject'],
+                        'date': e['date'],
+                        'preview': e['body'][:120]
+                    }
+                    for e in emails[:10]
+                ]
+            else:
+                email_cards = []
+
+            return {"response": response_text, "emails": email_cards}
 
         except Exception as e:
-            return f"❌ Erro: {str(e)}"
+            return {"response": f"❌ Erro: {str(e)}", "emails": []}
 
 
 # ─── Scheduler ────────────────────────────────────────────────────────────────
 def run_scheduler(backend):
-    """Corre o scheduler em background thread"""
     schedule.every().day.at(REPORT_TIME).do(backend.generate_daily_report)
     print(f"Report diário agendado para as {REPORT_TIME}")
     while True:
@@ -427,7 +647,6 @@ def run_scheduler(backend):
 # ─── Flask App ────────────────────────────────────────────────────────────────
 try:
     backend = ConsuaBackendV2()
-    # Inicia scheduler em background
     scheduler_thread = threading.Thread(target=run_scheduler, args=(backend,), daemon=True)
     scheduler_thread.start()
 except Exception as e:
@@ -449,8 +668,19 @@ def chat():
     if not user_input:
         return jsonify({'error': 'Mensagem vazia'}), 400
     try:
-        response = backend.process_command(user_input)
-        return jsonify({'response': response})
+        result = backend.process_command(user_input)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/summary', methods=['GET'])
+def summary():
+    if not backend:
+        return jsonify({'error': 'Backend não inicializado'}), 500
+    try:
+        data = backend.get_summary()
+        return jsonify(data)
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -467,7 +697,6 @@ def status():
 
 @app.route('/api/report/now', methods=['POST'])
 def report_now():
-    """Endpoint para disparar o report manualmente"""
     if not backend:
         return jsonify({'error': 'Backend não inicializado'}), 500
     try:
