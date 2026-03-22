@@ -9,7 +9,7 @@ COPY requirements.txt .
 RUN pip3 install --no-cache-dir -r requirements.txt --break-system-packages
 
 COPY consuela/ .
+COPY run.sh /run.sh
+RUN chmod +x /run.sh
 
-RUN mkdir -p /etc/services.d/consuela
-COPY run.sh /etc/services.d/consuela/run
-RUN chmod a+x /etc/services.d/consuela/run
+ENTRYPOINT ["/run.sh"]
